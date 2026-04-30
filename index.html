@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle financeiro pessoal</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --secondary: #a855f7;
+            --bg-dark: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.8);
+            --text: #f8fafc;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+
+        body {
+            background: radial-gradient(circle at top left, #1e1b4b, #0f172a);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            margin-bottom: 15px;
+        }
+
+        header h1 { font-size: 1.5rem; text-align: center; margin-bottom: 15px; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .stat-item h3 { font-size: 0.65rem; color: #94a3b8; }
+        .stat-item p { font-size: 0.9rem; font-weight: bold; }
+        .positive { color: #4ade80; }
+        .negative { color: #f87171; }
+
+        .main-layout { display: flex; flex-direction: column; gap: 15px; }
+        .chart-container { height: 160px; width: 100%; }
+
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
+            margin-top: 8px;
+            font-size: 0.9rem;
+        }
+
+        .btn-main {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            font-weight: bold; cursor: pointer;
+        }
+
+        .btn-print {
+            background: #475569;
+            font-weight: bold; cursor: pointer;
+            margin-top: 5px;
+        }
+
+        .transaction-list { max-height: 250px; overflow-y: auto; margin-top: 10px; }
+
+        .item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+        }
+
+        .actions { display: flex; gap: 5px; }
+        .btn-sm { padding: 6px 10px; font-size: 0.7rem; width: auto; margin: 0; cursor: pointer; }
+        .btn-edit { background: #eab308; color: black; font-weight: bold; }
+        .btn-del { background: #ef4444; font-weight: bold; }
+
+        @media (min-width: 768px) {
+            .stats-grid { gap: 20px; }
+            .stat-item p { font-size: 1.4rem; }
+            .main-layout { display: grid; grid-template-columns: 1fr 1fr; }
+        }
+
+        /* Estilo para Impressão */
+        @media print {
+            body { background: white; color: black; padding: 0; }
+            .glass-card { border: 1px solid #ccc; box-shadow: none; backdrop-filter: none; background: white; color: black; }
+            button, .chart-container, #type, input, .actions { display: none !important; }
+            .stats-grid { grid-template-columns: 1fr 1fr 1fr; border-bottom: 2px solid #000; }
+            .stat-item p, .stat-item h3 { color: black !important; }
+            .transaction-list { max-height: none; overflow: visible; }
+            .item { border-bottom: 1px solid #ddd; background: none; color: black; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Controle financeiro pessoal</h1>
+    </header>
+
+    <div class="stats-grid">
+        <div class="glass-card stat-item">
+            <h3>Saldo</h3>
+            <p id="total-balance">R$ 0,00</p>
+        </div>
+        <div class="glass-card stat-item">
+            <h3>Entradas</h3>
+            <p id="total-income" class="positive">R$ 0,00</p>
+        </div>
+        <div class="glass-card stat-item">
+            <h3>Saídas</h3>
+            <p id="total-expense" class="negative">R$ 0,00</p>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="glass-card" id="form-area">
+            <h3>Novo Lançamento</h3>
+            <input type="text" id="desc" placeholder="Ex: Salário, Mercado">
+            <input type="number" id="amount" placeholder="Valor R$">
+            <select id="type">
+                <option value="income">Entrada</option>
+                <option value="expense">Saída</option>
+            </select>
+            <button onclick="saveTransaction()" class="btn-main" id="btn-save">Salvar Dados</button>
+            <button onclick="window.print()" class="btn-print">Imprimir Relatório</button>
+        </div>
+
+        <div class="glass-card">
+            <h3>Resumo Visual</h3>
+            <div class="chart-container">
+                <canvas id="financeChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <h3>Extrato de Movimentações</h3>
+        <div id="list" class="transaction-list"></div>
+    </div>
+</div>
+
+<script>
+    let transactions = [];
+    let editId = null;
+    let myChart;
+
+    function saveTransaction() {
+        const desc = document.getElementById('desc').value;
+        const amount = parseFloat(document.getElementById('amount').value);
+        const type = document.getElementById('type').value;
+
+        if (!desc || isNaN(amount)) {
+            alert("Por favor, preencha a descrição e o valor.");
+            return;
+        }
+
+        if (editId !== null) {
+            transactions[editId] = { desc, amount, type };
+            editId = null;
+            document.getElementById('btn-save').innerText = "Salvar Dados";
+        } else {
+            transactions.push({ desc, amount, type });
+        }
+
+        clearInputs();
+        updateUI();
+    }
+
+    function deleteTransaction(index) {
+        if (confirm("Deseja realmente excluir este lançamento?")) {
+            transactions.splice(index, 1);
+            updateUI();
+        }
+    }
+
+    function editTransaction(index) {
+        const t = transactions[index];
+        document.getElementById('desc').value = t.desc;
+        document.getElementById('amount').value = t.amount;
+        document.getElementById('type').value = t.type;
+        editId = index;
+        document.getElementById('btn-save').innerText = "Atualizar Dados";
+        
+        // Direciona para o campo de novo lançamento
+        document.getElementById('desc').focus();
+        document.getElementById('form-area').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function clearInputs() {
+        document.getElementById('desc').value = '';
+        document.getElementById('amount').value = '';
+    }
+
+    function updateUI() {
+        const listEl = document.getElementById('list');
+        listEl.innerHTML = '';
+        let inc = 0, exp = 0;
+
+        transactions.forEach((t, i) => {
+            if (t.type === 'income') inc += t.amount;
+            else exp += t.amount;
+
+            listEl.innerHTML += `
+                <div class="item">
+                    <div>
+                        <strong>${t.desc}</strong><br>
+                        <span class="${t.type === 'income' ? 'positive' : 'negative'}">
+                            R$ ${t.amount.toLocaleString('pt-br', {minimumFractionDigits: 2})}
+                        </span>
+                    </div>
+                    <div class="actions">
+                        <button class="btn-sm btn-edit" onclick="editTransaction(${i})">Editar</button>
+                        <button class="btn-sm btn-del" onclick="deleteTransaction(${i})">Excluir</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('total-balance').innerText = `R$ ${(inc - exp).toLocaleString('pt-br', {minimumFractionDigits: 2})}`;
+        document.getElementById('total-income').innerText = `R$ ${inc.toLocaleString('pt-br', {minimumFractionDigits: 2})}`;
+        document.getElementById('total-expense').innerText = `R$ ${exp.toLocaleString('pt-br', {minimumFractionDigits: 2})}`;
+
+        updateChart(inc, exp);
+    }
+
+    function initChart() {
+        const ctx = document.getElementById('financeChart').getContext('2d');
+        myChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Entradas', 'Saídas'],
+                datasets: [{
+                    data: [0, 0],
+                    backgroundColor: ['#4ade80', '#f87171'],
+                    borderWidth: 0
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: 'white', font: { size: 10 } } } } }
+        });
+    }
+
+    function updateChart(inc, exp) {
+        myChart.data.datasets[0].data = [inc, exp];
+        myChart.update();
+    }
+
+    window.onload = initChart;
+</script>
+</body>
+</html>
