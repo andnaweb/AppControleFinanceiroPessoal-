@@ -1,0 +1,15 @@
+{
+  "short_name": "Finanças",
+  "name": "Controle Financeiro",
+  "display": "standalone",
+  "start_url": "index.html",
+  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/5501/5501375.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
